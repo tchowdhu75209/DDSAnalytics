@@ -1,0 +1,141 @@
+---
+title: "Proj2_DDSAnalytics"
+author: "Tai"
+date: "8/15/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+###
+#Imported the file via working directory
+#I have renamed the file as cs2
+#######
+```{r, echo=FALSE}
+read.csv("CaseStudy2_data.csv")
+```
+###
+#Look to find missing values, as per the results there are no missing values
+###
+```{r}
+sapply(cs2, function(x) sum(is.na(x)))
+```
+
+####
+#Linear Relationships using Pair for visualization
+####
+
+```{r}
+#Visualize the linear relationships for the three dependent variables.
+
+Yearsatcompanypairs<-pairs (~YearsAtCompany+Age+TotalWorkingYears+YearsWithCurrManager+JobInvolvement+JobSatisfaction
+       , data = cs2)
+
+YearsWithCurrManagerpairs <- pairs(~YearsWithCurrManager+YearsInCurrentRole+YearsAtCompany, data = cs2)
+
+YearsInCurrentRolepairs <- pairs(~YearsInCurrentRole + YearsWithCurrManager+YearsAtCompany, data = cs2)
+
+
+```
+
+####
+#Linear Relationships using LM method 
+####
+
+```{r}
+model1 <- lm(YearsAtCompany~Age+TotalWorkingYears+YearsWithCurrManager
+             +JobInvolvement+JobSatisfaction, 
+             data = cs2)
+summary(model1)
+
+model2 <- lm(YearsWithCurrManager~YearsInCurrentRole+YearsAtCompany, data = cs2)
+summary(model2)
+
+
+model3 <- lm(YearsInCurrentRole ~ YearsWithCurrManager+YearsAtCompany+Attrition, data = cs2)
+summary(model3)
+
+```
+###
+#NaiveBayes Classification
+###
+
+```{r}
+
+attrselect <- select(cs2,ID,Age,JobInvolvement,JobLevel,JobRole,
+                     MaritalStatus,MonthlyIncome,NumCompaniesWorked, OverTime, StockOptionLevel,
+                     TotalWorkingYears, WorkLifeBalance, YearsAtCompany, YearsInCurrentRole,YearsWithCurrManager, Attrition )
+
+set.seed(123)
+filterData = attrselect %>% filter(grepl("Yes", Attrition) | grepl("No", Attrition))
+filterData$Attrition[grepl("Yes", filterData$Attrition)] = "Yes"
+filterData$Attrition[grepl("No", filterData$Attrition)] = "No"
+filterData$Attrition = as.factor(filterData$Attrition)
+set.seed(123)
+splitPerc = .70
+trainIndices = sample(1:dim(filterData)[1],round(splitPerc * dim(filterData)[1]))
+train = filterData[trainIndices,]
+test = filterData[-trainIndices,]
+
+
+classifications = knn(train[,1:15],test[,1:15],train$Attrition, prob = TRUE, k = 5)
+table(test$Attrition,classifications)
+CM = confusionMatrix(table(test$Attrition,classifications))
+CM
+
+model = naiveBayes(train$Attrition~.,data = train)
+predictcurrtest<-predict(model,test, type = "raw")
+
+#attritiontest is the competition set
+predatt<-predict(model,attritiontest,type = "raw")
+```
+
+## Monthly Income Prediction
+
+```{r}
+boruta_income<-Boruta(MonthlyIncome~., data=cs2, doTrace = 2)
+plot(boruta_income,las=2, cex.axis=.7)
+attStats(boruta_income)
+
+
+incomeselect <- select(cs2,ID,Age,BusinessTravel, Department,Education,JobLevel,JobRole,
+                       NumCompaniesWorked, MonthlyRate,TotalWorkingYears,  YearsAtCompany, YearsInCurrentRole,
+                       YearsSinceLastPromotion,YearsWithCurrManager, Attrition, MonthlyIncome )
+
+
+modelincome<-lm(MonthlyIncome~Age+BusinessTravel+ Department+Education+JobLevel+JobRole+
+                             NumCompaniesWorked+ MonthlyRate+TotalWorkingYears+ YearsAtCompany+ YearsInCurrentRole+
+                             YearsSinceLastPromotion+YearsWithCurrManager+ Attrition, data = cs2)
+
+summary(modelincome)
+
+cs2 %>% ggplot(aes(x= TotalWorkingYears, y = MonthlyIncome)) + geom_point() + geom_smooth(method = "lm")+ggtitle(" Working Years vs Monthly Income")
+
+
+
+incomefit1 <- lm(MonthlyIncome~NumCompaniesWorked, data = incomeselect)
+summary(incomefit1)
+
+salpred<-predict(incomefit1, newdata =saltest )
+
+library("Metrics") ##for RMSE Calculation
+rmse(incomeselect$MonthlyIncome,salpred)
+
+
+write.csv(salpred,"Case2PredictionsChowdhurySalary.csv") ## export to csv file
+
+```
+
+####Satisfaction Graphs
+
+```{r}
+
+cs2 %>% ggplot(aes(y = EnvironmentSatisfaction, fill =JobRole)) + geom_boxplot() + ggtitle("Environment Satisfation by JobRole")
+
+cs2 %>% ggplot(aes(y = JobSatisfaction, fill =JobRole)) + geom_boxplot() + ggtitle("JOb Satisfation by JobRole")
+
+cs2 %>% ggplot(aes(y = RelationshipSatisfaction, fill =JobRole)) + geom_boxplot() + ggtitle("Relationship Satisfation by JobRole")
+```
